@@ -11,34 +11,28 @@ import java.util.List;
 @Component
 public class MedicationReminderScheduler {
 
-    private final MedicationScheduleRepository repo;
+    private final MedicationScheduleRepository scheduleRepo;
 
-    public MedicationReminderScheduler(MedicationScheduleRepository repo){
-        this.repo = repo;
+    public MedicationReminderScheduler(MedicationScheduleRepository scheduleRepo){
+        this.scheduleRepo = scheduleRepo;
     }
 
     // runs every 10 minutes
     @Scheduled(cron = "0 */10 * * * ?")
     public void checkMissedDoses(){
 
-        List<MedicationSchedule> schedules = repo.findAll();
+        LocalTime now = LocalTime.now();
+        
+        List<MedicationSchedule> reminders = scheduleRepo.findAll();
 
-        for (MedicationSchedule schedule : schedules) {
+        for (MedicationSchedule r : reminders) {
+            
+            if(r.getTime().isBefore(now) && !r.isTaken() && !r.isSnoozed()){
 
-            if(!schedule.isTaken() &&
-               !schedule.isMissed() &&
-               LocalTime.now().isAfter(schedule.getTime())){
+                r.setMissed(true);
+                scheduleRepo.save(r);
 
-                schedule.setMissed(true);
-
-                repo.save(schedule);
-
-                System.out.println(
-                        "Missed dose for patient "
-                                + schedule.getPatientId()
-                                + " medicine "
-                                + schedule.getMedicineName()
-                );
+                System.out.println("Missed dose for patient " + r.getPatientId());
             }
         }
     }

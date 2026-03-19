@@ -4,6 +4,7 @@ import com.medtracker.entity.MedicationSchedule;
 import com.medtracker.repository.MedicationScheduleRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -72,9 +73,7 @@ public void checkAdherenceAlert(Long patientId){
 
     if(adherence < 80){
 
-        System.out.println("ALERT: Patient " + patientId + " adherence below 80%");
-        
-        // later you can store notification in DB
+        System.out.println("ALERT: Patient " + patientId + adherence + "%");
     }
 }
 public List<Map<String, Object>> getHighRiskPatients(){
@@ -89,12 +88,7 @@ public List<Map<String, Object>> getHighRiskPatients(){
 
     for(Long patientId : patientIds){
 
-        List<MedicationSchedule> schedules = repo.findByPatientId(patientId);
-
-        long total = schedules.size();
-        long taken = schedules.stream().filter(MedicationSchedule::isTaken).count();
-
-        double adherence = total == 0 ? 0 : (taken * 100.0) / total;
+        double adherence = calculateAdherence(patientId);
 
         if(adherence < 80){
 

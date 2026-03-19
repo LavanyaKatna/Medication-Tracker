@@ -1,5 +1,7 @@
 package com.medtracker.entity;
 
+import java.time.LocalDateTime;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 
@@ -12,6 +14,14 @@ public class User {
 
     private String name;
     private String email;
+     private LocalDateTime createdAt;
+
+    // ✅ AUTO SET WHEN USER CREATED
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+    }
+    
 
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
@@ -36,6 +46,8 @@ public class User {
 
     public boolean isProfileCompleted() { return profileCompleted; }
     public void setProfileCompleted(boolean profileCompleted) { this.profileCompleted = profileCompleted; }
+     public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }
 
 

@@ -53,8 +53,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/schedules/**").authenticated()
                         .requestMatchers("/api/drug-info/**").permitAll()
                         .requestMatchers("/api/notifications/**").permitAll()
+                        .requestMatchers("/api/analytics/**").permitAll() 
+                        .requestMatchers("/api/analytics/patient/**").permitAll()
+.requestMatchers("/api/analytics/doctor/**").permitAll()
                         // everything else secured
-                        .anyRequest().authenticated())
+                        //.anyRequest().authenticated())
+                        .anyRequest().permitAll())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)

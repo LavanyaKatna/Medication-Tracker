@@ -21,6 +21,7 @@ public class Notification {
 
     @Column(name = "is_read")
     private boolean isRead = false;
+    private String type; // e.g., REMINDER, EXPIRY, ALERT
 
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();

@@ -32,6 +32,17 @@ public class JwtFilter extends OncePerRequestFilter {
 
         final String authorizationHeader = request.getHeader("Authorization");
 
+        String path = request.getRequestURI();
+
+// ✅ Skip authentication for analytics APIs
+if (path.startsWith("/api/analytics")) {
+    chain.doFilter(request, response);
+    return;
+}
+
+
+
+        
         String email = null;
         String jwt = null;
 

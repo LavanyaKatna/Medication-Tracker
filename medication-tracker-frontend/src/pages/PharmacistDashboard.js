@@ -1,16 +1,62 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/api";
+import {
+    BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
+} from "recharts";
 
 const PharmacistDashboard = () => {
     const navigate = useNavigate();
     const [medicines, setMedicines] = useState([]);
     const [loading, setLoading] = useState(true);
     const [drugDetails, setDrugDetails] = useState(null);
-
+    const [salesData, setSalesData] = useState([]);
+    const [topSelling, setTopSelling] = useState([]);
     // Fetch medicines from backend
+    const fetchSales = async () => {
+        try {
+            const res = await api.get("/api/analytics/sales-stock");
+
+            console.log("API RESPONSE:", res.data);
+
+            let formatted = [];
+
+            if (Array.isArray(res.data)) {
+                formatted = res.data.map(item => ({
+                    name: item[0],           // medicine name
+                    sales: item[1] || 0,     // count(p)
+                    stock: item[2] || 0      // max(stock)
+                }));
+            }
+
+            setSalesData(formatted);
+
+        } catch (err) {
+            console.error(err);
+            setSalesData([]);
+        }
+    };
+    const fetchTopSelling = async () => {
+        try {
+            const res = await api.get("/api/analytics/top-medicines");
+            let formatted = [];
+            if (Array.isArray(res.data)) {
+                formatted = res.data.map(item => ({
+                    name: item[0],
+                    sales: item[1]
+                }));
+            }
+            setTopSelling(formatted);
+        } catch (err) {
+            console.error(err);
+            setTopSelling([]);
+        }
+    };
+
     useEffect(() => {
         fetchMedicines();
+        fetchSales();
+        fetchTopSelling();
     }, []);
 
     const fetchMedicines = () => {
@@ -32,6 +78,41 @@ const PharmacistDashboard = () => {
     // Check expired or low stock
     const isExpired = (expiryDate) => new Date(expiryDate) < new Date().setHours(0, 0, 0, 0);
     const lowStock = (qty) => qty < 10;
+
+    const formatSafeDate = (d) => {
+        if (!d) return "—";
+        if (Array.isArray(d)) return d.join("-");
+        return d;
+    };
+
+    const getDaysLeft = (expiryDate) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const expiry = new Date(formatSafeDate(expiryDate));
+        if (isNaN(expiry.getTime())) return "N/A";
+        expiry.setHours(0, 0, 0, 0);
+        const diff = expiry - today;
+        return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    };
+
+    const downloadCSV = () => {
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Medicine Name,Batch,Expiry Date,Stock,Days Left\n";
+
+        medicines.forEach(m => {
+            const daysLeft = getDaysLeft(m.expiryDate);
+            const expD = formatSafeDate(m.expiryDate);
+            csvContent += `"${m.name}","${m.batchNumber}","${expD}","${m.stockQuantity}","${daysLeft}"\n`;
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "pharmacy_inventory_report.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     // Fetch external drug info + stock info
     const viewDrugDetails = async (medicine) => {
@@ -113,9 +194,14 @@ const PharmacistDashboard = () => {
                 {/* Top Bar */}
                 <div style={s.topBar}>
                     <h1 style={s.title}>Pharmacist Dashboard</h1>
-                    <button style={s.ctaBtn} onClick={() => navigate("/pharmacist/add-medicine")}>
-                        ➕ Add Medicine
-                    </button>
+                    <div style={{ display: "flex", gap: "12px" }}>
+                        <button style={{...s.ctaBtn, background: "linear-gradient(135deg,#10b981,#047857)"}} onClick={downloadCSV}>
+                            ⬇ Download Report (CSV)
+                        </button>
+                        <button style={s.ctaBtn} onClick={() => navigate("/pharmacist/add-medicine")}>
+                            ➕ Add Medicine
+                        </button>
+                    </div>
                 </div>
 
                 {/* Stats */}
@@ -153,6 +239,7 @@ const PharmacistDashboard = () => {
                                     <th style={s.th}>Medicine</th>
                                     <th style={s.th}>Batch</th>
                                     <th style={s.th}>Expiry</th>
+                                    <th style={s.th}>Days Left</th>
                                     <th style={s.th}>Stock</th>
                                     <th style={s.th}>Status</th>
                                     <th style={s.th}>Actions</th>
@@ -164,10 +251,11 @@ const PharmacistDashboard = () => {
                                         <td style={s.td}>{i + 1}</td>
                                         <td style={s.td}>{m.name}</td>
                                         <td style={s.td}>{m.batchNumber}</td>
-                                        <td style={s.td}>{m.expiryDate}</td>
+                                        <td style={s.td}>{formatSafeDate(m.expiryDate)}</td>
+                                        <td style={s.td}>{getDaysLeft(m.expiryDate)}</td>
                                         <td style={s.td}>{m.stockQuantity}</td>
                                         <td style={s.td}>
-                                            {isExpired(m.expiryDate) ? (
+                                            {isExpired(formatSafeDate(m.expiryDate)) ? (
                                                 <>
                                                     <span style={s.expiredBadge}>Expired</span>
                                                     <div style={{ fontSize: "12px", color: "#f87171", marginTop: "4px" }}>
@@ -190,6 +278,39 @@ const PharmacistDashboard = () => {
                             </tbody>
                         </table>
                     )}
+                </div>
+
+                <div style={{ display: "flex", gap: "24px", marginTop: "28px" }}>
+                    {/* Top Selling Chart */}
+                    <div style={{ ...s.card, flex: 1, marginTop: 0 }}>
+                        <h3 style={s.cardTitle}>Top Selling Medicines</h3>
+
+                        <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={topSelling}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis />
+                                <Tooltip />
+                                <Bar dataKey="sales" fill="#3b82f6" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+
+                    {/* Sales vs Stock Chart */}
+                    <div style={{ ...s.card, flex: 1, marginTop: 0 }}>
+                        <h3 style={s.cardTitle}>Sales vs Stock</h3>
+
+                        <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={salesData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis />
+                                <Tooltip />
+                                <Bar dataKey="sales" fill="#3b82f6" />
+                                <Bar dataKey="stock" fill="#10b981" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
                 </div>
             </div>
 

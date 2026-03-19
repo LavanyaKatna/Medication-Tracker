@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import api from "../api/api";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
+import AdherenceTrendChart from "../components/AdherenceTrendChart";
 import AdherenceChart from "../components/AdherenceChart";
-
 
 const validityBadge = (endDate, renewalDate) => {
     const today = new Date();
@@ -32,12 +32,23 @@ const PatientDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [schedules, setSchedules] = useState([]);
     const patientId = localStorage.getItem("userId");
+    console.log("Patient ID:", patientId);
     const [blink, setBlink] = useState(false);
     const [adherence, setAdherence] = useState(0);
     const [analytics, setAnalytics] = useState({ taken: 0, missed: 0 });
+    const [trendData, setTrendData] = useState(null);
 
 
+    useEffect(() => {
+        if (!patientId) return;
 
+        api.get(`/api/analytics/patient/adherence-trend/${patientId}`)
+            .then(res => {
+                console.log("Trend Data:", res.data);
+                setTrendData(res.data);
+            })
+            .catch(err => console.error(err));
+    }, [patientId]);
     useEffect(() => {
 
         api.get(`/api/schedules/analytics/${patientId}`)
@@ -168,6 +179,34 @@ const PatientDashboard = () => {
         window.open(`http://localhost:8080/api/prescriptions/${id}/pdf`, "_blank");
     };
 
+    const formatSafeDate = (d) => {
+        if (!d) return "—";
+        if (Array.isArray(d)) return d.join("-");
+        return d;
+    };
+
+    const downloadCSV = () => {
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Name,Date,Adherence %\n";
+        const name = localStorage.getItem("userName") || "Patient";
+
+        if (trendData && trendData.labels) {
+            trendData.labels.forEach((dateObj, i) => {
+                const date = formatSafeDate(dateObj);
+                const adherence = trendData.values[i].toFixed(1);
+                csvContent += `"${name}","${date}","${adherence}%"\n`;
+            });
+        }
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "patient_adherence_report.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div style={s.page}>
             {/* Sidebar */}
@@ -187,6 +226,7 @@ const PatientDashboard = () => {
                 <div style={s.topBar}>
                     <h1 style={s.title}>Patient Dashboard</h1>
                     <div style={s.topActions}>
+                        <button style={s.ctaBtn} onClick={downloadCSV}>⬇ Download Report (CSV)</button>
                         <div
                             style={blink ? { ...s.bellWrapper, ...s.blink } : s.bellWrapper}
                             onClick={() => {
@@ -333,6 +373,8 @@ const PatientDashboard = () => {
                         </table>
                     )}
                 </div>
+
+
                 {/* Medication Schedule */}
                 <div style={s.tableCard}>
                     <h3 style={s.cardTitle}>⏰ Medication Reminders</h3>
@@ -405,6 +447,10 @@ const PatientDashboard = () => {
                         missed={analytics.missed}
                     />
                 </div>
+                <div style={s.card}>
+                    <h3 style={s.cardTitle}>📈 Adherence Trend</h3>
+                    <AdherenceTrendChart data={trendData} />
+                </div>
             </div>
         </div>
     );
@@ -423,6 +469,7 @@ const s = {
     topBar: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "28px" },
     title: { fontSize: "26px", fontWeight: "700", margin: 0 },
     topActions: { display: "flex", alignItems: "center", gap: "12px" },
+    ctaBtn: { background: "linear-gradient(135deg,#06b6d4,#3b82f6)", border: "none", color: "white", padding: "10px 18px", borderRadius: "10px", cursor: "pointer", fontWeight: "700", fontSize: "14px" },
     bellWrapper: { position: "relative", cursor: "pointer", fontSize: "24px", padding: "4px" },
     badge: { position: "absolute", top: "-4px", right: "-4px", background: "#ef4444", color: "white", fontSize: "10px", fontWeight: "700", padding: "2px 6px", borderRadius: "10px" },
     notifPanel: {

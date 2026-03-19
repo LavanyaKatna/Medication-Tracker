@@ -1,6 +1,34 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/api";
+import DoctorBarChart from "../components/DoctorBarChart";
+import DoctorPieChart from "../components/DoctorPieChart";
+
+import {
+    Chart as ChartJS,
+    CategoryScale,
+    LinearScale,
+    BarElement,
+    ArcElement,
+    LineElement,
+    PointElement,
+    Title,
+    Tooltip,
+    Legend
+} from "chart.js";
+
+ChartJS.register(
+    CategoryScale,
+    LinearScale,
+    BarElement,
+    ArcElement,
+    LineElement,
+    PointElement,
+    Title,
+    Tooltip,
+    Legend
+);
+
 
 const STATUS_COLORS = {
     PENDING: { bg: "#1e3a5f", color: "#60a5fa" },
@@ -14,7 +42,8 @@ const DoctorDashboard = () => {
     const [loading, setLoading] = useState(true);
     const doctorId = localStorage.getItem("userId");
     const [highRiskPatients, setHighRiskPatients] = useState([]);
-
+    const [barData, setBarData] = useState(null);
+    const [pieData, setPieData] = useState(null);
 
     useEffect(() => {
 
@@ -35,7 +64,18 @@ const DoctorDashboard = () => {
             .then(res => { setPrescriptions(res.data); setLoading(false); })
             .catch(() => setLoading(false));
     }, [doctorId]);
+    useEffect(() => {
+        if (!doctorId) return;
 
+        api.get(`/api/analytics/doctor/prescriptions/${doctorId}`)
+            .then(res => setBarData(res.data))
+            .catch(err => console.error(err));
+
+        api.get("/api/analytics/doctor/adherence-levels")
+            .then(res => setPieData(res.data))
+            .catch(err => console.error(err));
+
+    }, [doctorId]); // ✅ FIXED
     const handleDownloadPdf = (id) => {
         window.open(`http://localhost:8080/api/prescriptions/${id}/pdf`, "_blank");
     };
@@ -55,6 +95,35 @@ const DoctorDashboard = () => {
             console.error(err);
             alert("You are not authorized to view this PDF.");
         }
+    };
+
+    const formatSafeDate = (d) => {
+        if (!d) return "—";
+        if (Array.isArray(d)) return d.join("-");
+        return d;
+    };
+
+    const downloadCSV = () => {
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Patient Name,Medication,Dosage,Start Date,End Date,Status\n";
+
+        prescriptions.forEach(p => {
+            const patientName = p.patient?.name || "N/A";
+            const medication = p.medicationName || "N/A";
+            const dosage = p.dosage || "N/A";
+            const startDate = formatSafeDate(p.startDate);
+            const endDate = formatSafeDate(p.endDate);
+            const status = p.status || "N/A";
+            csvContent += `"${patientName}","${medication}","${dosage}","${startDate}","${endDate}","${status}"\n`;
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "doctor_prescriptions_report.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     return (
@@ -82,9 +151,14 @@ const DoctorDashboard = () => {
                 )}
                 <div style={s.topBar}>
                     <h1 style={s.title}>Doctor Dashboard</h1>
-                    <button style={s.ctaBtn} onClick={() => navigate("/doctor/write-prescription")}>
-                        🖊 Write New Prescription
-                    </button>
+                    <div style={{ display: "flex", gap: "12px" }}>
+                        <button style={{...s.ctaBtn, background: "linear-gradient(135deg,#10b981,#047857)"}} onClick={downloadCSV}>
+                            ⬇ Download Report (CSV)
+                        </button>
+                        <button style={s.ctaBtn} onClick={() => navigate("/doctor/write-prescription")}>
+                            🖊 Write New Prescription
+                        </button>
+                    </div>
                 </div>
 
                 {/* Stats row */}
@@ -204,7 +278,21 @@ const DoctorDashboard = () => {
                         </table>
                     )}
                 </div>
+                <div style={{ display: "flex", gap: "20px", marginTop: "20px" }}>
+
+                    <div style={{ ...s.card, flex: 1 }}>
+                        <h3 style={s.cardTitle}>📊 Prescriptions Over Time</h3>
+                        <DoctorBarChart data={barData} />
+                    </div>
+
+                    <div style={{ ...s.card, flex: 1 }}>
+                        <h3 style={s.cardTitle}>📈 Patient Adherence Levels</h3>
+                        <DoctorPieChart data={pieData} />
+                    </div>
+
+                </div>
             </div>
+
         </div>
     );
 };

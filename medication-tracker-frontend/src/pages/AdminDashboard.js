@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/api";
+import {
+    BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line
+} from "recharts";
 
 const AdminDashboard = () => {
     const navigate = useNavigate();
@@ -11,12 +14,49 @@ const AdminDashboard = () => {
     const [rejectReason, setRejectReason] = useState("");
     const [auditModal, setAuditModal] = useState(null); // audit list
     const adminId = localStorage.getItem("userId");
+    const [userGrowth, setUserGrowth] = useState([]);
+    const [alerts, setAlerts] = useState([]);
+    const [adminStats, setAdminStats] = useState({ users: 0, prescriptions: 0, alerts: 0 });
+    const [systemUsage, setSystemUsage] = useState([]);
 
     useEffect(() => {
         api.get("/api/prescriptions/pending")
             .then(r => setPending(r.data)).catch(() => { });
         api.get("/api/prescriptions/all")
             .then(r => setAll(r.data)).catch(() => { });
+
+        api.get("/api/analytics/admin-stats")
+            .then(res => setAdminStats(res.data)).catch(err => console.error(err));
+
+        api.get("/api/analytics/system-usage")
+            .then(res => {
+                if (res.data.labels && res.data.values) {
+                    const formatted = res.data.labels.map((lbl, idx) => ({ date: lbl, count: res.data.values[idx] }));
+                    setSystemUsage(formatted);
+                }
+            }).catch(err => console.error(err));
+
+        api.get("/api/analytics/user-growth")
+            .then(res => {
+                if (res.data.labels && res.data.values) {
+                    const formatted = res.data.labels.map((lbl, idx) => ({ date: lbl, count: res.data.values[idx] }));
+                    setUserGrowth(formatted);
+                } else {
+                    setUserGrowth(res.data);
+                }
+            })
+            .catch(err => console.error(err));
+
+        api.get("/api/analytics/alerts-by-type")
+            .then(res => {
+                if (res.data.labels && res.data.values) {
+                    const formatted = res.data.labels.map((lbl, idx) => ({ type: lbl, count: res.data.values[idx] }));
+                    setAlerts(formatted);
+                } else {
+                    setAlerts(res.data);
+                }
+            })
+            .catch(err => console.error(err));
     }, []);
 
     const handleApprove = async (id) => {
@@ -66,6 +106,61 @@ const AdminDashboard = () => {
         }
     };
 
+    const formatSafeDate = (d) => {
+        if (!d) return "—";
+        if (Array.isArray(d)) return d.join("-");
+        return d;
+    };
+
+    const downloadCSV = () => {
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Patient,Doctor,Medication,Dosage,Duration,Status\n";
+        all.forEach(p => {
+            const patientName = p.patient?.name ? `"${p.patient.name}"` : "—";
+            const doctorName = p.doctor?.name ? `"${p.doctor.name}"` : "—";
+            const medName = p.medicationName ? `"${p.medicationName}"` : "—";
+            const dosage = p.dosage ? `"${p.dosage}"` : "—";
+            const duration = `${formatSafeDate(p.startDate)} to ${formatSafeDate(p.endDate)}`;
+            const row = `${patientName},${doctorName},${medName},${dosage},"${duration}","${p.status}"`;
+            csvContent += row + "\n";
+        });
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "prescriptions_report.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const downloadSystemAnalyticsCSV = () => {
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Metric,Value\n";
+        csvContent += `"Total Users","${adminStats.users}"\n`;
+        csvContent += `"Total Prescriptions","${adminStats.prescriptions}"\n`;
+        csvContent += `"Total Alerts","${adminStats.alerts}"\n`;
+        csvContent += "\n";
+        csvContent += "System Usage Over Time\n";
+        csvContent += "Date,Activity Count\n";
+        systemUsage.forEach(d => {
+            csvContent += `"${formatSafeDate(d.date)}","${d.count}"\n`;
+        });
+        csvContent += "\n";
+        csvContent += "User Growth\n";
+        csvContent += "Date,New Users\n";
+        userGrowth.forEach(d => {
+            csvContent += `"${formatSafeDate(d.date)}","${d.count}"\n`;
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "system_analytics_report.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const displayed = tab === "pending" ? pending : all.filter(p => p.status !== "PENDING");
 
     return (
@@ -82,6 +177,29 @@ const AdminDashboard = () => {
             <div style={s.main}>
                 <div style={s.topBar}>
                     <h1 style={s.title}>Admin Dashboard</h1>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                        <button style={s.downloadBtn} onClick={downloadCSV}>📥 Prescriptions (CSV)</button>
+                        <button style={{ ...s.downloadBtn, background: "linear-gradient(135deg,#10b981,#047857)" }} onClick={downloadSystemAnalyticsCSV}>📥 System Analytics (CSV)</button>
+                    </div>
+                </div>
+
+                <div style={s.statsRowCards}>
+                    <div style={s.statCard}>
+                        <h4 style={s.statTitle}>Total Users</h4>
+                        <p style={s.statValue}>{adminStats.users}</p>
+                    </div>
+                    <div style={s.statCard}>
+                        <h4 style={s.statTitle}>Total Prescriptions</h4>
+                        <p style={{ ...s.statValue, color: "#34d399" }}>{adminStats.prescriptions}</p>
+                    </div>
+                    <div style={s.statCard}>
+                        <h4 style={s.statTitle}>Total Alerts</h4>
+                        <p style={{ ...s.statValue, color: "#f87171" }}>{adminStats.alerts}</p>
+                    </div>
+                </div>
+
+                <div style={{ marginBottom: "28px" }}>
+                    <h3 style={{ ...s.cardTitle, marginBottom: "12px" }}>Prescription Status</h3>
                     <div style={s.statsRow}>
                         <span style={s.statPill}>⏳ {pending.length} Pending</span>
                         <span style={{ ...s.statPill, color: "#34d399", borderColor: "#34d399" }}>✅ {all.filter(p => p.status === "APPROVED").length} Approved</span>
@@ -148,6 +266,50 @@ const AdminDashboard = () => {
                             </tbody>
                         </table>
                     )}
+                </div>
+                {/* System Usage Line Chart */}
+                <div style={s.card}>
+                    <h3 style={s.cardTitle}>System Usage Over Time</h3>
+
+                    <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={systemUsage}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="date" />
+                            <YAxis />
+                            <Tooltip />
+                            <Line type="monotone" dataKey="count" stroke="#38bdf8" strokeWidth={3} />
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
+
+                {/* User Growth Chart */}
+                <div style={s.card}>
+                    <h3 style={s.cardTitle}>User Growth</h3>
+
+                    <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={userGrowth}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="date" />
+                            <YAxis />
+                            <Tooltip />
+                            <Bar dataKey="count" fill="#3b82f6" />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+
+                {/* Alerts Chart */}
+                <div style={s.card}>
+                    <h3 style={s.cardTitle}>Alerts Overview</h3>
+
+                    <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={alerts}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="type" />
+                            <YAxis />
+                            <Tooltip />
+                            <Bar dataKey="count" fill="#f87171" />
+                        </BarChart>
+                    </ResponsiveContainer>
                 </div>
             </div>
 
@@ -262,6 +424,11 @@ const s = {
     main: { flex: 1, padding: "32px" },
     topBar: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "28px", flexWrap: "wrap", gap: "12px" },
     title: { fontSize: "26px", fontWeight: "700", margin: 0 },
+    downloadBtn: { background: "linear-gradient(135deg,#06b6d4,#3b82f6)", border: "none", color: "white", padding: "10px 16px", borderRadius: "8px", cursor: "pointer", fontWeight: "600" },
+    statsRowCards: { display: "flex", gap: "16px", marginBottom: "28px" },
+    statCard: { background: "#111827", padding: "20px", borderRadius: "12px", flex: 1, border: "1px solid #1e293b", display: "flex", flexDirection: "column", gap: "8px" },
+    statTitle: { margin: 0, fontSize: "14px", color: "#94a3b8", textTransform: "uppercase" },
+    statValue: { margin: 0, fontSize: "28px", fontWeight: "800", color: "#38bdf8" },
     statsRow: { display: "flex", gap: "10px" },
     statPill: { padding: "6px 14px", borderRadius: "20px", border: "1px solid #60a5fa", color: "#60a5fa", fontSize: "12px", fontWeight: "600" },
     card: { background: "#111827", borderRadius: "12px", padding: "24px", border: "1px solid #1e293b" },
