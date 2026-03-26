@@ -22,7 +22,7 @@ This project consists of a Spring Boot backend and a React frontend.
     Open `src/main/resources/application.properties` and update the database username and password if they differ from the defaults:
     ```properties
     spring.datasource.username=root
-    spring.datasource.password=Kusuma
+    spring.datasource.password=*****
     ```
 
 3.  **Run Application**:
